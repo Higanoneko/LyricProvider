@@ -87,8 +87,7 @@ object SPlayerLyricProvider : YukiBaseHooker() {
             }.hook {
                 after {
                     ensureInitialized()
-                    val metadata = args[0]
-                    if (metadata == null) return@after
+                    val metadata = args[0] ?: return@after
                     try {
                         val titleField = metadata::class.java.getDeclaredField("title").apply { isAccessible = true }
                         val artistField = metadata::class.java.getDeclaredField("artist").apply { isAccessible = true }
@@ -171,6 +170,10 @@ object SPlayerLyricProvider : YukiBaseHooker() {
             created.player.setDisplayRoma(true)
             created.register()
             provider = created
+            Runtime.getRuntime().addShutdownHook(Thread {
+                provider?.destroy()
+                YLog.debug(tag = TAG, msg = "provider destroyed on shutdown")
+            })
             YLog.debug(tag = TAG, msg = "provider registered")
         } catch (e: Exception) {
             initAttempted = false
