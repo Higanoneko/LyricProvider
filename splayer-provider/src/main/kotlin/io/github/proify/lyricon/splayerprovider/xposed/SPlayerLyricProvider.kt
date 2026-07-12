@@ -89,15 +89,17 @@ object SPlayerLyricProvider : YukiBaseHooker() {
                     ensureInitialized()
                     val metadata = args[0]
                     if (metadata == null) return@after
-                    val titleField = metadata::class.java.getDeclaredField("title")
-                    val artistField = metadata::class.java.getDeclaredField("artist")
-                    titleField.isAccessible = true
-                    artistField.isAccessible = true
-                    val title = titleField.get(metadata) as? String ?: return@after
-                    val artist = artistField.get(metadata) as? String ?: ""
-                    currentSongName = title
-                    currentArtist = artist
-                    YLog.debug(tag = TAG, msg = "updateMetadata: $title - $artist")
+                    try {
+                        val titleField = metadata::class.java.getDeclaredField("title").apply { isAccessible = true }
+                        val artistField = metadata::class.java.getDeclaredField("artist").apply { isAccessible = true }
+                        val title = titleField.get(metadata) as? String ?: return@after
+                        val artist = artistField.get(metadata) as? String ?: ""
+                        currentSongName = title
+                        currentArtist = artist
+                        YLog.debug(tag = TAG, msg = "updateMetadata: $title - $artist")
+                    } catch (t: Throwable) {
+                        YLog.error(tag = TAG, msg = "updateMetadata: failed to read TrackMetadata fields", e = t)
+                    }
                 }
             }
         }
