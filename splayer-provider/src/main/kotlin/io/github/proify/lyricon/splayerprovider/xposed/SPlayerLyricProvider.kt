@@ -21,6 +21,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
@@ -33,6 +34,8 @@ object SPlayerLyricProvider : YukiBaseHooker() {
 
     private var currentSongName = ""
     private var currentArtist = ""
+    private var titleField: java.lang.reflect.Field? = null
+    private var artistField: java.lang.reflect.Field? = null
 
     override fun onHook() {
         YLog.debug(tag = TAG, msg = "正在注入进程: $processName")
@@ -45,8 +48,8 @@ object SPlayerLyricProvider : YukiBaseHooker() {
                 parameters(String::class.java, String::class.java)
             }.hook {
                 after {
-                    currentSongName = args[0] as String
-                    currentArtist = args[1] as String
+                    currentSongName = args[0] as? String ?: ""
+                    currentArtist = args[1] as? String ?: ""
                     YLog.debug(tag = TAG, msg = "updateFloatingLyricSongInfo: $currentSongName - $currentArtist")
                 }
             }
@@ -57,8 +60,8 @@ object SPlayerLyricProvider : YukiBaseHooker() {
             }.hook {
                 after {
                     ensureInitialized()
-                    val lrcJson = args[0] as String
-                    val yrcJson = args[1] as String
+                    val lrcJson = args[0] as? String ?: ""
+                    val yrcJson = args[1] as? String ?: ""
                     val song = parseToSong(lrcJson, yrcJson)
                     YLog.debug(tag = TAG, msg = "updateFloatingLyricData: lrcLen=${lrcJson.length}, yrcLen=${yrcJson.length}, parsed=${song != null}")
                     if (song != null) {
@@ -73,8 +76,8 @@ object SPlayerLyricProvider : YukiBaseHooker() {
             }.hook {
                 after {
                     ensureInitialized()
-                    val timeMs = args[0] as Long
-                    val playing = args[1] as Boolean
+                    val timeMs = args[0] as? Long ?: 0L
+                    val playing = args[1] as? Boolean ?: false
                     YLog.debug(tag = TAG, msg = "updateFloatingLyricProgress: timeMs=$timeMs, playing=$playing")
                     provider?.player?.setPosition(timeMs)
                     provider?.player?.setPlaybackState(playing)
@@ -89,10 +92,12 @@ object SPlayerLyricProvider : YukiBaseHooker() {
                     ensureInitialized()
                     val metadata = args[0] ?: return@after
                     try {
-                        val titleField = metadata::class.java.getDeclaredField("title").apply { isAccessible = true }
-                        val artistField = metadata::class.java.getDeclaredField("artist").apply { isAccessible = true }
-                        val title = titleField.get(metadata) as? String ?: return@after
-                        val artist = artistField.get(metadata) as? String ?: ""
+                        if (titleField == null) {
+                            titleField = metadata::class.java.getDeclaredField("title").apply { isAccessible = true }
+                            artistField = metadata::class.java.getDeclaredField("artist").apply { isAccessible = true }
+                        }
+                        val title = titleField!!.get(metadata) as? String ?: return@after
+                        val artist = artistField!!.get(metadata) as? String ?: ""
                         currentSongName = title
                         currentArtist = artist
                         YLog.debug(tag = TAG, msg = "updateMetadata: $title - $artist")
@@ -140,6 +145,7 @@ object SPlayerLyricProvider : YukiBaseHooker() {
         }
     }
 
+    @Synchronized
     private fun ensureInitialized() {
         if (provider != null || initAttempted) return
         initAttempted = true
@@ -196,7 +202,7 @@ object SPlayerLyricProvider : YukiBaseHooker() {
                 val obj = element.jsonObject
                 val begin = obj["startTime"]?.jsonPrimitive?.longOrNull ?: 0L
                 val end = obj["endTime"]?.jsonPrimitive?.longOrNull ?: 0L
-                val translation = obj["translatedLyric"]?.let { it.jsonPrimitive.content } ?: ""
+                val translation = obj["translatedLyric"]?.jsonPrimitive?.contentOrNull ?: ""
                 val wordsArr = obj["words"]?.jsonArray
 
                 val words = mutableListOf<LyricWord>()
@@ -204,7 +210,7 @@ object SPlayerLyricProvider : YukiBaseHooker() {
                 if (wordsArr != null) {
                     for (w in wordsArr) {
                         val wObj = w.jsonObject
-                        val text = wObj["word"]?.let { it.jsonPrimitive.content } ?: ""
+                        val text = wObj["word"]?.jsonPrimitive?.contentOrNull ?: ""
                         val wBegin = wObj["startTime"]?.jsonPrimitive?.longOrNull ?: 0L
                         val wEnd = wObj["endTime"]?.jsonPrimitive?.longOrNull ?: 0L
                         if (text.isNotEmpty()) {
