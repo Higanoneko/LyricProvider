@@ -8,7 +8,6 @@ import com.android.build.api.dsl.ApplicationExtension
 
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.ksp)
     kotlin("plugin.serialization") version "2.1.21"
 }
 
@@ -22,8 +21,8 @@ configure<ApplicationExtension> {
         applicationId = "io.github.proify.lyricon.cmprovider"
         minSdk = 28
         targetSdk = rootProject.extra.get("targetSdkVersion") as Int
-        versionCode = 7
-        versionName = "1.0.5-beta1"
+        versionCode = 8
+        versionName = "1.1.0-beta1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -62,7 +61,7 @@ configure<ApplicationExtension> {
 }
 
 dependencies {
-    implementation(project(":share:extensions-android"))
+    implementation(project(":share:extensions-kt"))
     implementation(project(":share:lrckit"))
     implementation(project(":share:yrckit"))
 
@@ -70,11 +69,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.dexkit)
 
-    implementation(libs.yukihookapi.api)
-    implementation(libs.kavaref.core)
-    implementation(libs.kavaref.extension)
-    compileOnly(libs.xposed.api)
-    ksp(libs.yukihookapi.ksp.xposed)
+    compileOnly(libs.libxposed.api)
 
     implementation(libs.androidx.core.ktx)
     testImplementation(libs.junit)

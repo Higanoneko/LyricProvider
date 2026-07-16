@@ -13,14 +13,14 @@ import io.github.proify.lyricon.lyric.model.RichLyricLine
 import io.github.proify.lyricon.lyric.model.Song
 import io.github.proify.lyricon.yrckit.YrcParser
 
-fun LocalLyricCache.toSong(): Song {
-    val metadata = MediaMetadataCache.get(musicId)
+fun LocalLyricCache.toSong(metadataOverride: Metadata? = null): Song {
+    val metadata = metadataOverride ?: MediaMetadataCache.get(musicId)
     val richLyricLines = toRichLines()
 
     return Song(id = musicId.toString()).apply {
         name = metadata?.title
         artist = metadata?.artist
-        duration = metadata?.duration ?: richLyricLines.last().end
+        duration = resolveSongDuration(metadata?.duration, richLyricLines.lastOrNull()?.end)
         lyrics = richLyricLines
     }
 }
@@ -79,3 +79,8 @@ private fun LocalLyricCache.parseRomaLines(): List<LyricLine>? {
     }
     return null
 }
+
+internal fun resolveSongDuration(metadataDuration: Long?, lastLyricEnd: Long?): Long =
+    metadataDuration?.takeIf { it > 0 }
+        ?: lastLyricEnd?.takeIf { it > 0 }
+        ?: 0L

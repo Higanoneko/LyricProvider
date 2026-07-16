@@ -14,12 +14,11 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
 object Downloader {
-    private val downloadingIds = ConcurrentHashMap.newKeySet<Long>()
+    private val downloadGate = DownloadGate()
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     fun download(id: Long, downloadCallback: DownloadCallback) {
-        if (downloadingIds.contains(id)) return
-        downloadingIds.add(id)
+        if (!downloadGate.tryStart(id)) return
 
         scope.launch {
             try {
@@ -28,8 +27,19 @@ object Downloader {
             } catch (e: Exception) {
                 downloadCallback.onDownloadFailed(id, e)
             } finally {
-                downloadingIds.remove(id)
+                downloadGate.finish(id)
             }
         }
+    }
+}
+
+/** Atomically owns at most one in-flight download for each media id. */
+internal class DownloadGate {
+    private val activeIds = ConcurrentHashMap.newKeySet<Long>()
+
+    fun tryStart(id: Long): Boolean = activeIds.add(id)
+
+    fun finish(id: Long) {
+        activeIds.remove(id)
     }
 }
