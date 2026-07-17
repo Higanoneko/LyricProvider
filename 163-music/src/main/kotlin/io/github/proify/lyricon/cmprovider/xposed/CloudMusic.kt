@@ -141,17 +141,36 @@ internal class CloudMusic(
         )
 
         try {
-            val monitor = createPreferencesMonitor(hostApplication)
-            synchronized(stateLock) {
-                preferencesMonitor = monitor
-            }
             setupProvider(hostApplication)
         } catch (throwable: Throwable) {
-            synchronized(stateLock) {
-                preferencesMonitor?.close()
-                preferencesMonitor = null
-            }
             logger.error("Provider initialization failed in $processName", throwable)
+            return
+        }
+
+        startPreferencesMonitorInitialization(hostApplication)
+    }
+
+    private fun startPreferencesMonitorInitialization(hostApplication: Application) {
+        try {
+            Thread(
+                {
+                    val monitor = createPreferencesMonitor(hostApplication)
+                    val previousMonitor = synchronized(stateLock) {
+                        val previous = preferencesMonitor
+                        preferencesMonitor = monitor
+                        previous
+                    }
+                    if (previousMonitor !== monitor) {
+                        previousMonitor?.close()
+                    }
+                },
+                "Lyricon-DexKit-$processName"
+            ).apply {
+                isDaemon = true
+                start()
+            }
+        } catch (throwable: Throwable) {
+            logger.error("Unable to start preference capability initialization", throwable)
         }
     }
 
@@ -161,7 +180,9 @@ internal class CloudMusic(
             val monitor = DexKitBridge.create(hostApplication.applicationInfo.sourceDir).use { bridge ->
                 PreferencesMonitor(
                     kitBridge = bridge,
-                    callback = PreferenceCallback(::onTranslationOptionChanged),
+                    callback = PreferenceCallback { type ->
+                        dispatchTranslationOptionChange(hostApplication, type)
+                    },
                     logger = logger,
                     hostPackageName = packageName
                 )
@@ -174,8 +195,21 @@ internal class CloudMusic(
                 "Preference capability disabled because DexKit initialization failed",
                 throwable
             )
-            onTranslationOptionChanged(DISABLED_TRANSLATION_TYPE)
+            dispatchTranslationOptionChange(hostApplication, DISABLED_TRANSLATION_TYPE)
             null
+        }
+    }
+
+    private fun dispatchTranslationOptionChange(
+        hostApplication: Application,
+        type: Int
+    ) {
+        try {
+            hostApplication.mainExecutor.execute {
+                onTranslationOptionChanged(type)
+            }
+        } catch (throwable: Throwable) {
+            logger.error("Unable to dispatch the translation preference", throwable)
         }
     }
 

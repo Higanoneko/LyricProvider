@@ -53,7 +53,9 @@ internal class PreferencesMonitor(
 
         val resolvedMethod = getPreferenceMethodData?.let { methodData ->
             try {
-                methodData.getMethodInstance(classLoader)
+                methodData.getMethodInstance(classLoader).apply {
+                    isAccessible = true
+                }
             } catch (throwable: Throwable) {
                 logger.error("Unable to resolve the preference method", throwable)
                 null
