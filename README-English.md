@@ -26,7 +26,7 @@
 | 🧊 **LX Music**                      | `lx-music`          | Supports translated lyrics display                 |
 | 🐶 **Kugou Music / Concept Edition** | `kugou-music`       | **Requires enabling car lyrics mode in the app**   |
 | 📻 **Kuwo Music**                    | `kuwo-music`        | **Requires enabling car lyrics mode in the app**   |
-| 🎧 **Spotify**                       | `spotify-music`     | Currently only supports standard lyrics            |
+| 🎧 **Spotify**                       | `spotify-music`     | Supports standard lyrics and per-word lyrics       |
 | ⚡ **Poweramp**                       | `poweramp-music`    | Supports online matching and embedded local lyrics |
 | 🧂 **Salt Music**                    | `salt-player-music` | Adapted based on Meizu standard lyric interface    |
 | 🎵 **Qishui Music**                  | `qishui-music`      | Supports dynamic lyrics, translated lyrics         |

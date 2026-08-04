@@ -6,11 +6,9 @@
 
 package io.github.proify.lyricon.spotifyprovider.xposed.api
 
-import android.util.Log
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import org.json.JSONObject
 import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -27,7 +25,6 @@ object SpotifyApi {
         "x-client-id"
     )
 
-    private const val TAG = "SpotifyApi"
     private const val BASE_URL = "https://guc3-spclient.spotify.com/color-lyrics/v2/track/"
 
     val headers = mutableMapOf<String, String>()
@@ -48,29 +45,30 @@ object SpotifyApi {
     }
 
     /**
-     * 根据歌曲 ID 获取原始歌词字符串
+     * 根据歌曲 ID 获取原始歌词字节
      *
      * @param id 歌曲唯一标识
-     * @return 歌词 JSON 字符串
+     * @return 歌词原始字节（protobuf；服务端降级时可能是 JSON）
      * @throws Exception 网络错误或解析异常
      */
     @Throws(Exception::class)
-    fun fetchRawLyric(id: String): String = performNetworkRequest(id)
+    fun fetchRawLyric(id: String): ByteArray = performNetworkRequest(id)
 
     /**
      * 执行实际的网络请求逻辑
      */
     @Throws(Exception::class)
-    private fun performNetworkRequest(id: String): String {
-        val url = "$BASE_URL$id?vocalRemoval=false&clientLanguage=${
+    private fun performNetworkRequest(id: String): ByteArray {
+        val url = "$BASE_URL$id?vocalRemoval=true&clientLanguage=${
             Locale.getDefault().toLanguageTag()
         }&preview=false"
 
         val requestBuilder = Request.Builder()
             .url(url)
             .get()
-            .addHeader("accept", "application/json")
-            .addHeader("app-platform", "WebPlayer")
+            .addHeader("accept", "application/protobuf")
+            .addHeader("content-type", "application/protobuf")
+            .addHeader("app-platform", "Android")
 
         // 注入外部配置的 Header
         headers.forEach { (key, value) ->
@@ -81,7 +79,7 @@ object SpotifyApi {
 
         client.newCall(request).execute().use { response ->
             val code = response.code
-            val bodyString = response.body.string()
+            val body = response.body.bytes()
 
             if (code == 404) {
                 throw NoFoundLyricException(id, "No lyric found for $id")
@@ -91,13 +89,7 @@ object SpotifyApi {
                 throw IOException("HTTP error code: $code, msg: ${response.message}")
             }
 
-            return try {
-                JSONObject(bodyString)
-                bodyString
-            } catch (e: Exception) {
-                Log.e(TAG, "Invalid JSON response for $id: $bodyString", e)
-                throw IOException("Invalid JSON response")
-            }
+            return body
         }
     }
 }
