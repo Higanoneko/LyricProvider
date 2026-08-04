@@ -118,13 +118,13 @@ object SpotifyProtoParser {
             when (field.number) {
                 FIELD_LYRICS -> {
                     val payload = next.readLengthDelimited()
-                    lyrics = parseLyricsData(payload.value).value
+                    lyrics = parseLyricsData(ProtoCursor(payload.value)).value
                     cursor = payload.cursor
                 }
 
                 FIELD_COLORS -> {
                     val payload = next.readLengthDelimited()
-                    colors = parseColorData(payload.value)
+                    colors = parseColorData(ProtoCursor(payload.value))
                     cursor = payload.cursor
                 }
 
@@ -153,7 +153,7 @@ object SpotifyProtoParser {
 
                 FIELD_LINES -> {
                     val payload = next.readLengthDelimited()
-                    lines += parseLyricLine(payload.value).value
+                    lines += parseLyricLine(ProtoCursor(payload.value)).value
                     cursor = payload.cursor
                 }
 
@@ -177,7 +177,7 @@ object SpotifyProtoParser {
 
                 FIELD_PREVIEW_LINES -> {
                     val payload = next.readLengthDelimited()
-                    previewLines += parseLyricLine(payload.value).value
+                    previewLines += parseLyricLine(ProtoCursor(payload.value)).value
                     cursor = payload.cursor
                 }
 
@@ -219,7 +219,7 @@ object SpotifyProtoParser {
 
                 FIELD_SYLLABLES -> {
                     val payload = next.readLengthDelimited()
-                    syllables += parseSyllable(payload.value).value
+                    syllables += parseSyllable(ProtoCursor(payload.value)).value
                     cursor = payload.cursor
                 }
 
