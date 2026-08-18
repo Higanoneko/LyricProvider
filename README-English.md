@@ -80,11 +80,11 @@ the [Development Documentation](https://github.com/tomakino/lyricon/blob/master/
 
 ### ⭐ Star History
 
-<a href="https://star-history.com/#tomakino/LyricProvider&Date">
+<a href="https://star-history.dera.page/#tomakino/LyricProvider&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=tomakino/LyricProvider&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=tomakino/LyricProvider&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=tomakino/LyricProvider&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=tomakino/LyricProvider&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=tomakino/LyricProvider&type=Date" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=tomakino/LyricProvider&type=Date" />
  </picture>
 </a>
 
