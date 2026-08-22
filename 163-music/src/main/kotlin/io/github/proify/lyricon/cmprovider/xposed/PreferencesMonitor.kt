@@ -56,6 +56,7 @@ class PreferencesMonitor(
 
     private fun lazyGetSharedPreferences(): SharedPreferences? {
         if (preferences != null) return preferences
+
         preferences = getPreferenceMethod?.invoke(null) as SharedPreferences
         preferences?.registerOnSharedPreferenceChangeListener(sharedPreferenceChangeListener)
         return preferences

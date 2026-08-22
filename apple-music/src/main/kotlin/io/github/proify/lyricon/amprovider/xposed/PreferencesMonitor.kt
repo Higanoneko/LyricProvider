@@ -11,6 +11,7 @@ import android.content.Context
 import de.robv.android.xposed.XC_MethodHook
 import de.robv.android.xposed.XposedHelpers
 
+/** 监听 Apple Music 的"翻译歌词"偏好设置变化。 */
 @SuppressLint("StaticFieldLeak")
 object PreferencesMonitor {
 
@@ -29,11 +30,14 @@ object PreferencesMonitor {
             object : XC_MethodHook() {
                 @Throws(Throwable::class)
                 override fun afterHookedMethod(param: MethodHookParam?) {
-                    listener?.onTranslationSelectedChanged(param?.args[0] as Boolean)
+                    listener?.onTranslationSelectedChanged(
+                        param?.args?.getOrNull(0) as? Boolean ?: return
+                    )
                 }
             })
     }
 
+    /** 读取当前是否开启了翻译歌词。 */
     fun isTranslationSelected(): Boolean =
         context.getSharedPreferences("preferences", Context.MODE_PRIVATE)
             .getBoolean("key_player_lyrics_translation_selected", false)

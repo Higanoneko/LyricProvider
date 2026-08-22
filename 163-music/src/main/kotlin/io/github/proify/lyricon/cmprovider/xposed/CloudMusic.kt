@@ -8,10 +8,13 @@ package io.github.proify.lyricon.cmprovider.xposed
 import android.app.Application
 import android.media.MediaMetadata
 import android.media.session.PlaybackState
+import android.util.Log
 import com.highcapable.kavaref.KavaRef.Companion.resolve
+import com.highcapable.yukihookapi.hook.core.YukiMemberHookCreator
 import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
 import com.highcapable.yukihookapi.hook.log.YLog
 import io.github.proify.extensions.json
+import io.github.proify.lrckit.EnhanceLrcParser
 import io.github.proify.lyricon.cmprovider.xposed.Constants.ICON
 import io.github.proify.lyricon.cmprovider.xposed.Constants.PROVIDER_PACKAGE_NAME
 import io.github.proify.lyricon.cmprovider.xposed.PreferencesMonitor.PreferenceCallback
@@ -29,7 +32,7 @@ import java.io.File
  * 网易云音乐模块主入口，根据进程名选择性启用歌词提供者钩子。
  */
 object CloudMusic : YukiBaseHooker() {
-    private const val TAG = "CloudMusicProvider"
+    const val TAG = "CloudMusicProvider"
     private val providerManager by lazy { LyricProviderManager() }
 
     init {
@@ -40,7 +43,7 @@ object CloudMusic : YukiBaseHooker() {
         when (processName) {
             packageName,
             "$packageName:play" -> {
-                YLog.debug(tag = TAG, msg = "Hooking $processName")
+                YLog.info(tag = TAG, msg = "Hooking 4440 $processName")
                 providerManager.onHook()
             }
         }
@@ -52,17 +55,17 @@ object CloudMusic : YukiBaseHooker() {
     private class LyricProviderManager : DownloadCallback {
         private var lyricProvider: LyriconProvider? = null
         private var lastSetSong: Song? = null
-        private var currentMusicId: Long = 0
+        private var currentMusicId: Long = -1000
 
         private var dexKitBridge: DexKitBridge? = null
         private var preferencesMonitor: PreferencesMonitor? = null
 
-        private var translationType: Int = 114514
+        private var translationType: Int = -100
 
+        private var isAppCreated: Boolean = false
         // ---------------------------------- 入口与初始化 ----------------------------------
 
         fun onHook() {
-            YLog.debug("Hooking, processName= $processName")
 
             dexKitBridge = DexKitBridge.create(appInfo.sourceDir)
             preferencesMonitor = PreferencesMonitor(dexKitBridge!!, object : PreferenceCallback {
@@ -76,18 +79,13 @@ object CloudMusic : YukiBaseHooker() {
 
             onAppLifecycle {
                 onCreate {
+                    if (isAppCreated) return@onCreate
+                    isAppCreated = true
                     setupProvider()
                 }
             }
 
             rehookAfterTinkerLoad(appClassLoader!!)
-            hookMediaSession()
-        }
-
-        /**
-         * 在 Tinker 热更新后重新挂钩必要的类（如偏好设置监听）。
-         */
-        private fun rehookAfterTinkerLoad(classLoader: ClassLoader) {
             "com.tencent.tinker.loader.TinkerLoader".toClass(appClassLoader)
                 .resolve()
                 .method { name = "tryLoad" }
@@ -99,17 +97,23 @@ object CloudMusic : YukiBaseHooker() {
                         }
                     }
                 }
+        }
 
+        /**
+         * 在 Tinker 热更新后重新挂钩必要的类（如偏好设置监听）。
+         */
+        private fun rehookAfterTinkerLoad(classLoader: ClassLoader) {
             preferencesMonitor?.update(classLoader)
+            hookMediaSession(classLoader)
         }
 
         /**
          * 初始化并注册 LyriconProvider。
          */
         private fun setupProvider() {
-            val application = appContext ?: return
-            lyricProvider?.destroy()
+            if (lyricProvider != null) return
 
+            val application = appContext ?: return
             lyricProvider = LyriconFactory.createProvider(
                 context = application,
                 providerPackageName = PROVIDER_PACKAGE_NAME,
@@ -124,16 +128,23 @@ object CloudMusic : YukiBaseHooker() {
                 register()
             }
 
-            YLog.info(tag = TAG, msg = "Provider registered")
+            YLog.info(tag = TAG, msg = "Provider registered2")
         }
 
         // ---------------------------------- MediaSession 钩子 ----------------------------------
 
-        private fun hookMediaSession() {
-            "android.media.session.MediaSession".toClass()
+        private var a: YukiMemberHookCreator.MemberHookCreator.Result? = null
+        private var b: YukiMemberHookCreator.MemberHookCreator.Result? = null
+
+        private fun hookMediaSession(classLoader: ClassLoader) {
+            a?.remove()
+            b?.remove()
+
+            "android.media.session.MediaSession".toClass(classLoader)
                 .resolve()
                 .apply {
-                    firstMethod {
+
+                    a = firstMethod {
                         name = "setMetadata"
                         parameters(MediaMetadata::class.java)
                     }.hook {
@@ -147,7 +158,7 @@ object CloudMusic : YukiBaseHooker() {
                         }
                     }
 
-                    firstMethod {
+                    b = firstMethod {
                         name = "setPlaybackState"
                         parameters(PlaybackState::class.java)
                     }.hook {
@@ -232,7 +243,7 @@ object CloudMusic : YukiBaseHooker() {
                 id = id.toString(),
                 name = metadata.title,
                 artist = metadata.artist,
-                duration = metadata.duration
+                duration = metadata.duration,
             )
 
             if (cacheFile?.exists() == true) {
@@ -252,7 +263,26 @@ object CloudMusic : YukiBaseHooker() {
             setSong(songToSet)
         }
 
-        private fun setSong(song: Song) {
+        private fun setSong(raw: Song) {
+            Log.i(TAG, raw.toString())
+
+            val song = raw.deepCopy()
+            if (song.lyrics?.size != 0) {
+                val id = song.id?.toLongOrNull()
+                if (id != null) {
+                    val m = MediaMetadataCache.get(id)
+                    Log.i(TAG, m.toString())
+
+                    val lyric = m?.lyric
+                    if (!lyric.isNullOrBlank()) {
+                        val l = EnhanceLrcParser.parse(lyric, m.duration)
+                        if (l.lines.isNotEmpty()) {
+                            song.lyrics = l.lines
+                        }
+                    }
+                }
+            }
+
             if (lastSetSong == song) return
             lastSetSong = song
             lyricProvider?.player?.setSong(song)

@@ -10,10 +10,11 @@ import io.github.proify.lyricon.amprovider.xposed.model.LyricTiming
 
 object LyricsTimingParser {
 
-    fun parser(timing: LyricTiming, any: Any) {
-        timing.agent = callMethod(any, "getAgent") as? String
-        timing.begin = callMethod(any, "getBegin") as? Int ?: 0
-        timing.end = callMethod(any, "getEnd") as? Int ?: 0
-        timing.duration = callMethod(any, "getDuration") as? Int ?: 0
+    /** 将原生时间信息（agent / begin / end / duration）填到 [timing] 中。 */
+    fun parse(timing: LyricTiming, native: Any) {
+        timing.agent = callMethod(native, "getAgent") as? String
+        timing.begin = callMethod(native, "getBegin") as? Int ?: 0
+        timing.end = callMethod(native, "getEnd") as? Int ?: 0
+        timing.duration = callMethod(native, "getDuration") as? Int ?: 0
     }
 }
