@@ -12,15 +12,15 @@ import java.util.Locale
 
 object DiskCache {
 
-    fun put(context: Context, id: String, content: String) {
+    fun put(context: Context, id: String, content: ByteArray) {
         val file = getFile(context, id)
         file.parentFile?.mkdirs()
-        file.writeText(content)
+        file.writeBytes(content)
     }
 
-    fun get(context: Context, id: String): String? {
+    fun get(context: Context, id: String): ByteArray? {
         val file = getFile(context, id)
-        return if (file.exists()) file.readText() else null
+        return if (file.exists()) file.readBytes() else null
     }
 
     private fun getFile(context: Context, id: String): File =

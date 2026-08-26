@@ -18,8 +18,6 @@ import io.github.proify.lyricon.provider.LyriconProvider
 import io.github.proify.lyricon.provider.ProviderLogo
 import io.github.proify.lyricon.spotifyprovider.xposed.api.NoFoundLyricException
 import io.github.proify.lyricon.spotifyprovider.xposed.api.SpotifyApi
-import io.github.proify.lyricon.spotifyprovider.xposed.api.SpotifyApi.jsonParser
-import io.github.proify.lyricon.spotifyprovider.xposed.api.response.LyricResponse
 import java.util.Locale
 
 object Spotify : YukiBaseHooker(), DownloadCallback {
@@ -125,18 +123,14 @@ object Spotify : YukiBaseHooker(), DownloadCallback {
         Downloader.download(id, this)
     }
 
-    override fun onDownloadFinished(id: String, response: String) {
+    override fun onDownloadFinished(id: String, response: ByteArray) {
         applyResponse(id, response)
         appContext?.let { DiskCache.put(it, id, response) }
     }
 
-    private fun applyResponse(id: String, response: String) {
-        val lyricResponse =
-            runCatching { jsonParser.decodeFromString<LyricResponse>(response) }.getOrNull()
-        if (lyricResponse != null) {
-            val song = lyricResponse.toSong(id)
-            if (song != lastSong) setSong(song)
-        }
+    private fun applyResponse(id: String, response: ByteArray) {
+        val song = response.toSongOrNull(id) ?: return
+        if (song != lastSong) setSong(song)
     }
 
     override fun onDownloadFailed(id: String, e: Exception) {
