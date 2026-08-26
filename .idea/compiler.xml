@@ -6,6 +6,7 @@
       <module name="LyricProvider.common" target="21" />
       <module name="LyricProvider.local-provider" target="21" />
       <module name="LyricProvider.meizhu-provider" target="21" />
+      <module name="LyricProvider.salt-player-music" target="21" />
       <module name="LyricProvider.share.car-lyric-provider" target="21" />
       <module name="LyricProvider.share.common" target="21" />
       <module name="LyricProvider.share.meizhu-provider" target="21" />
