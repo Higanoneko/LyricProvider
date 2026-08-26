@@ -25,6 +25,7 @@
 | ☁️ **网易云音乐/荣耀版**   | `163-music`         | 支持逐字歌词、翻译歌词；Modern API 101+ |
 | 🐧 **QQ 音乐**       | `qq-music`          | 支持逐字歌词、翻译歌词          |
 | 🐧 **QQ 音乐 HD**    | `qq-music-hd`       | 支持逐字歌词、翻译歌词          |
+| 🔵 **波点音乐**        | `bodian-music`      | 支持逐字歌词，离线可用          |
 | 🧊 **LX 音乐**       | `lx-music`          | 支持翻译歌词显示             |
 | 🐶 **酷狗音乐/概念版**    | `kugou-music`       | **需在 App 内开启车载歌词模式** |
 | 📻 **酷我音乐**        | `kuwo-music`        | **需在 App 内开启车载歌词模式** |
@@ -85,11 +86,11 @@
 
 ### ⭐ Star 增长
 
-<a href="https://star-history.com/#tomakino/LyricProvider&Date">
+<a href="https://star-history.dera.page/#tomakino/LyricProvider&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=tomakino/LyricProvider&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=tomakino/LyricProvider&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=tomakino/LyricProvider&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=tomakino/LyricProvider&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=tomakino/LyricProvider&type=Date" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=tomakino/LyricProvider&type=Date" />
  </picture>
 </a>
 

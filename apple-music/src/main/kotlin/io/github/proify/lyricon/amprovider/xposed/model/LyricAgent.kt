@@ -20,24 +20,18 @@ data class LyricAgent(
 ) {
 
     companion object {
-        fun getNameTypesNames(nameTypes: IntArray): Array<String> {
-            val nameTypesName = mutableListOf<String>()
-            nameTypes.forEach {
-                nameTypesName.add(getNameTypeName(it)?.typeName ?: "")
-            }
-            return nameTypesName.toTypedArray()
-        }
+        /** 根据 nameTypes 得到对应的类型名称数组，未知类型补空串。 */
+        fun nameTypesToNames(nameTypes: IntArray): Array<String> =
+            nameTypes.map { nameTypeOf(it)?.typeName ?: "" }.toTypedArray()
 
-        fun getNameTypeName(nameType: Int): NameType? {
-            return NameType.entries.firstOrNull { it.type == nameType }
-        }
+        fun nameTypeOf(nameType: Int): NameType? =
+            NameType.entries.firstOrNull { it.type == nameType }
 
-        fun getType(type: Long): Type? {
-            return Type.entries.firstOrNull { it.type == type }
-        }
+        fun typeOf(type: Long): Type? =
+            Type.entries.firstOrNull { it.type == type }
     }
 
-    enum class NameType(var typeName: String, val type: Int) {
+    enum class NameType(val typeName: String, val type: Int) {
         NONE("None", 0),
         FULL("Full", 1),
         FAMILY("Family", 2),
@@ -55,17 +49,16 @@ data class LyricAgent(
         OTHER("Other", 5)
     }
 
+    // 数组字段无法被 data class 默认 equals 正确比较，这里手动实现。
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is LyricAgent) return false
 
-        if (type != other.type) return false
-        if (!nameTypes.contentEquals(other.nameTypes)) return false
-        if (!nameTypeNames.contentEquals(other.nameTypeNames)) return false
-        if (typeName != other.typeName) return false
-        if (id != other.id) return false
-
-        return true
+        return type == other.type
+                && nameTypes.contentEquals(other.nameTypes)
+                && nameTypeNames.contentEquals(other.nameTypeNames)
+                && typeName == other.typeName
+                && id == other.id
     }
 
     override fun hashCode(): Int {

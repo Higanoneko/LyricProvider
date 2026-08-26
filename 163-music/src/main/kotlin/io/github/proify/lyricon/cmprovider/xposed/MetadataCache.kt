@@ -7,6 +7,7 @@
 package io.github.proify.lyricon.cmprovider.xposed
 
 import android.media.MediaMetadata
+import android.util.Log
 import kotlinx.serialization.Serializable
 import java.net.URI
 import java.net.URLDecoder
@@ -23,8 +24,24 @@ object MediaMetadataCache {
         val title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
         val artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
         val duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION)
+        val lyricInfo = metadata.getString("lyricInfo")
 
-        val data = Metadata(id, title, artist, duration)
+        metadata.keySet().forEach {
+            runCatching {
+                Log.i(CloudMusic.TAG, "key:" + it + " value:" + metadata.getString(it))
+            }
+        }
+
+
+        Log.i(CloudMusic.TAG, "lyricInfo:" + lyricInfo.orEmpty())
+        val lyric = runCatching {
+            if (lyricInfo != null) {
+                val jo = JSONObject(lyricInfo)
+                jo.getString("lyric")
+            } else null
+        }.getOrNull()
+
+        val data = Metadata(id, title, artist, duration, lyric)
         map[id] = data
         return data
     }

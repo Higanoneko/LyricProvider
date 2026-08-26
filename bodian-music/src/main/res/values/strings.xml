@@ -1,0 +1,12 @@
+<!--
+  ~ Copyright 2026 Proify, Tomakino
+  ~ Licensed under the Apache License, Version 2.0
+  ~ http://www.apache.org/licenses/LICENSE-2.0
+  -->
+
+<resources>
+    <string name="app_name">波点音乐歌词支持</string>
+
+    <string name="xposed_description">为词幕提供波点音乐歌词</string>
+    <string name="lyricon_module_description">提供波点音乐歌词，支持逐字歌词（读取 App 自身的 .lrcx 缓存，无需联网）。</string>
+</resources>

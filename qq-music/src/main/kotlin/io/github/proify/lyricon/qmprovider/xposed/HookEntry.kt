@@ -23,7 +23,7 @@ open class HookEntry : IYukiHookXposedInit {
         super.onInit()
         YukiHookAPI.configs {
             debugLog {
-                tag = "QQMusicProvider"
+                tag = QQMusic.TAG
             }
         }
     }

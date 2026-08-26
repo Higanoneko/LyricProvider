@@ -10,25 +10,25 @@ import android.app.Application
 import com.highcapable.yukihookapi.hook.log.YLog
 import de.robv.android.xposed.XposedHelpers
 
+/**
+ * 构造无真实数据的 Song 并调用 [PlayerLyricsViewModel.loadLyrics]，
+ * 欺骗 Apple Music 触发歌词下载，下载完成后由 [Apple.hookLyricBuildMethod] 捕获。
+ */
 class LyricRequester(
     private val classLoader: ClassLoader,
     private val application: Application
 ) {
     private var playerLyricsViewModel: Any? = null
 
-    /**
-     * 欺骗 Apple Music 触发歌词下载
-     *
-     * @see Apple.hookLyricBuildMethod
-     */
     fun requestDownload(mediaId: String) {
         if (mediaId.isBlank()) {
-            YLog.debug("LyricRequester: mediaId is null or blank")
+            YLog.debug("LyricRequester: mediaId is blank, skip")
             return
         }
         try {
-            val song =
-                XposedHelpers.newInstance(classLoader.loadClass("com.apple.android.music.model.Song"))
+            val song = XposedHelpers.newInstance(
+                classLoader.loadClass("com.apple.android.music.model.Song")
+            )
             XposedHelpers.callMethod(song, "setId", mediaId)
             XposedHelpers.callMethod(song, "setHasLyrics", true)
 
@@ -41,9 +41,8 @@ class LyricRequester(
 
             XposedHelpers.callMethod(playerLyricsViewModel, "loadLyrics", song)
             YLog.debug("LyricRequester: Triggered download for $mediaId")
-
         } catch (e: Exception) {
-            YLog.error("LyricRequester: Failed to trigger download", e)
+            YLog.error("LyricRequester: Failed to trigger download for $mediaId", e)
         }
     }
 }

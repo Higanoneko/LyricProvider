@@ -6,37 +6,39 @@
 
 package io.github.proify.lyricon.amprovider.xposed
 
+import com.highcapable.yukihookapi.hook.log.YLog
 import io.github.proify.lyricon.amprovider.xposed.parser.AppleSongParser
 import io.github.proify.lyricon.amprovider.xposed.util.toSong
 import io.github.proify.lyricon.lyric.model.Song
 
+/** 歌曲数据仓库：聚合磁盘缓存、元数据缓存与原生解析结果。 */
 object SongRepository {
 
     /**
-     * 根据 ID 获取歌曲
-     * 策略：内存/磁盘缓存 -> 占位符
+     * 根据 ID 获取歌曲。
+     * 策略：磁盘缓存 -> 元数据占位符（仅标题/歌手，无歌词）。
      */
     fun getSong(id: String): Song {
-        // 1. 尝试从磁盘缓存读取
-        val cache = DiskSongManager.load(id)
-        if (cache != null) {
-            return cache.toSong()
+        val cached = DiskSongManager.load(id)
+        if (cached != null) {
+            YLog.debug("SongRepository: Cache hit for $id")
+            return cached.toSong()
         }
 
-        // 2. 缓存未命中，从 Metadata 生成占位符（只有标题/歌手，无歌词）
         val metadata = MediaMetadataCache.getMetadataById(id)
+        YLog.debug("SongRepository: Cache miss for $id, using placeholder")
         return Song(id, metadata?.title, metadata?.artist)
     }
 
-    /**
-     * 保存解析好的歌曲到磁盘
-     */
-    fun saveSong(nativeSongObj: Any): Song? {
-        val song = AppleSongParser.parser(nativeSongObj)
-        if (song.adamId.isNullOrBlank()) {
+    /** 解析原生 Song 并缓存到磁盘；缺少 ID 或解析失败时返回 null。 */
+    fun saveSong(nativeSong: Any): Song? {
+        val appleSong = AppleSongParser.parse(nativeSong)
+        val id = appleSong.adamId
+        if (id.isNullOrBlank()) {
+            YLog.debug("SongRepository: Native song has no adamId, ignored")
             return null
         }
-        DiskSongManager.save(song)
-        return song.toSong()
+        DiskSongManager.save(appleSong)
+        return appleSong.toSong()
     }
 }

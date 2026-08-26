@@ -28,7 +28,8 @@ import io.github.proify.qrckit.LyricResponse
 
 object QQMusic : YukiBaseHooker() {
 
-    private const val TAG = "Lyricon_QQMusic"
+    const val TAG = "QQMusicProvider"
+
     private const val PKG_MAIN = "com.tencent.qqmusic"
     private const val PKG_PLAYER_SERVICE = "com.tencent.qqmusic:QQPlayerService"
 
@@ -85,7 +86,7 @@ object QQMusic : YukiBaseHooker() {
         private var currentMediaId: String? = null
 
         fun hook(loader: ClassLoader) {
-            YLog.debug("Hooking Player Process: MediaSession & Lyricon Provider")
+            YLog.debug(tag = TAG, msg = "Hooking Player Process: MediaSession & Lyricon Provider")
 
             onAppLifecycle {
                 onCreate {
@@ -154,8 +155,14 @@ object QQMusic : YukiBaseHooker() {
             // 初始化显示设置
             val prefs = application.getSharedPreferences(PREF_NAME_QQMUSIC, Context.MODE_PRIVATE)
             provider.player.apply {
-                setDisplayTranslation(prefs.getBoolean(KEY_DISPLAY_TRANS, false))
-                setDisplayRoma(prefs.getBoolean(KEY_DISPLAY_ROMA, false))
+                val isDisplayTranslation = prefs.getBoolean(KEY_DISPLAY_TRANS, false)
+                val isDisplayRoma = prefs.getBoolean(KEY_DISPLAY_ROMA, false)
+                setDisplayTranslation(isDisplayTranslation)
+                setDisplayRoma(isDisplayRoma)
+                YLog.debug(
+                    tag = TAG,
+                    msg = "Initial display settings: trans -> ${isDisplayTranslation}, roma -> $isDisplayRoma"
+                )
             }
 
             provider.register()
@@ -203,7 +210,7 @@ object QQMusic : YukiBaseHooker() {
         }
 
         override fun onDownloadFailed(id: String, e: Exception) {
-            YLog.error("$TAG: Lyric download failed for $id", e)
+            YLog.error(tag = TAG, msg = "Lyric download failed for $id", e = e)
         }
 
         private fun LyricResponse.toLyriconSong(): Song {

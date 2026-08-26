@@ -4,33 +4,21 @@
  * http://www.apache.org/licenses/LICENSE-2.0
  */
 
-@file:Suppress("ReplaceManualRangeWithIndicesCalls")
-
 package io.github.proify.lyricon.amprovider.xposed.parser
 
 import io.github.proify.lyricon.amprovider.xposed.model.LyricAgent
 
 object LyricsAgentParser {
 
-    fun parserAgentVector(any: Any): MutableList<LyricAgent> {
-        val agents = mutableListOf<LyricAgent>()
-        val size = callMethod(any, "size") as? Long ?: 0
-        for (i in 0..<size) {
-            val agentPtr: Any? = callMethod(any, "get", i)
-            val agentNative: Any? = agentPtr?.let { callMethod(it, "get") }
-            val agent = agentNative?.let { parserAgentNative(it) }
-            agent?.let { agents.add(it) }
-        }
-        return agents
-    }
+    /** 解析原生 Agent Vector 为 [LyricAgent] 列表。 */
+    fun parse(any: Any): MutableList<LyricAgent> = parseNativeVector(any) { parseAgent(it) }
 
-    private fun parserAgentNative(agentNative: Any): LyricAgent {
-        val agent = LyricAgent()
-        agent.nameTypes = callMethod(agentNative, "getNameTypes_") as? IntArray ?: intArrayOf()
-        agent.type = callMethod(agentNative, "getType_") as? Long ?: 0
-        agent.id = callMethod(agentNative, "getId") as? String
-        agent.nameTypeNames = LyricAgent.getNameTypesNames(agent.nameTypes)
-        agent.typeName = LyricAgent.getType(agent.type)?.name
-        return agent
+    private fun parseAgent(native: Any): LyricAgent = LyricAgent().apply {
+        nameTypes = callMethod(native, "getNameTypes_") as? IntArray ?: intArrayOf()
+        type = callMethod(native, "getType_") as? Long ?: 0L
+        id = callMethod(native, "getId") as? String
+
+        nameTypeNames = LyricAgent.nameTypesToNames(nameTypes)
+        typeName = LyricAgent.typeOf(type)?.name
     }
 }

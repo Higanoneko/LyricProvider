@@ -14,6 +14,7 @@ import android.media.session.PlaybackState
 import io.github.libxposed.api.XposedInterface
 import io.github.libxposed.api.XposedModule
 import io.github.proify.extensions.json
+import io.github.proify.lrckit.EnhanceLrcParser
 import io.github.proify.lyricon.cmprovider.xposed.Constants.ICON
 import io.github.proify.lyricon.cmprovider.xposed.Constants.PROVIDER_PACKAGE_NAME
 import io.github.proify.lyricon.cmprovider.xposed.PreferencesMonitor.PreferenceCallback

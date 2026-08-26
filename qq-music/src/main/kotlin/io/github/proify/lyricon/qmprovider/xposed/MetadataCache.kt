@@ -8,9 +8,10 @@ package io.github.proify.lyricon.qmprovider.xposed
 
 import android.media.MediaMetadata
 import kotlinx.serialization.Serializable
+import java.util.concurrent.ConcurrentHashMap
 
 object MediaMetadataCache {
-    private val map = mutableMapOf<String, Metadata>()
+    private val map = ConcurrentHashMap<String, Metadata>()
 
     fun save(metadata: MediaMetadata): Metadata? {
         val id = metadata.getString(MediaMetadata.METADATA_KEY_MEDIA_ID)
