@@ -47,6 +47,8 @@ include(":cloud-provider")
 include(":meizu-provider")
 include(":car-provider")
 
+include(":splayer-provider")
+
 include(":apple-music")
 include(":163-music")
 include(":qq-music")

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SPlayer歌词支持</string>
+    <string name="xposed_description">为词幕提供SPlayer歌词</string>
+    <string name="lyricon_module_description">提供SPlayer音乐歌词，支持逐字歌词、翻译歌词。</string>
+</resources>
