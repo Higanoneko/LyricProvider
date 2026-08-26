@@ -23,6 +23,7 @@
 | ☁️ **Netease Music**                 | `163-music`         | Supports dynamic lyrics, translated lyrics         |
 | 🐧 **QQ Music**                      | `qq-music`          | Supports dynamic lyrics, translated lyrics         |
 | 🐧 **QQ Music HD**                   | `qq-music-hd`       | Supports dynamic lyrics, translated lyrics         |
+| 🔵 **Bodian Music**                  | `bodian-music`      | Word-by-word lyrics, works offline                 |
 | 🧊 **LX Music**                      | `lx-music`          | Supports translated lyrics display                 |
 | 🐶 **Kugou Music / Concept Edition** | `kugou-music`       | **Requires enabling car lyrics mode in the app**   |
 | 📻 **Kuwo Music**                    | `kuwo-music`        | **Requires enabling car lyrics mode in the app**   |
