@@ -3,16 +3,16 @@
  * Licensed under the Apache License, Version 2.0
  * http://www.apache.org/licenses/LICENSE-2.0
  */
+
 package io.github.proify.lyricon.cmprovider.xposed
 
 import android.app.Application
+import android.app.Instrumentation
 import android.media.MediaMetadata
+import android.media.session.MediaSession
 import android.media.session.PlaybackState
-import android.util.Log
-import com.highcapable.kavaref.KavaRef.Companion.resolve
-import com.highcapable.yukihookapi.hook.core.YukiMemberHookCreator
-import com.highcapable.yukihookapi.hook.entity.YukiBaseHooker
-import com.highcapable.yukihookapi.hook.log.YLog
+import io.github.libxposed.api.XposedInterface
+import io.github.libxposed.api.XposedModule
 import io.github.proify.extensions.json
 import io.github.proify.lrckit.EnhanceLrcParser
 import io.github.proify.lyricon.cmprovider.xposed.Constants.ICON
@@ -23,269 +23,403 @@ import io.github.proify.lyricon.provider.LyriconFactory
 import io.github.proify.lyricon.provider.LyriconProvider
 import io.github.proify.lyricon.provider.ProviderLogo
 import io.github.proify.lyricon.yrckit.download.response.LyricResponse
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.json.encodeToStream
 import org.luckypray.dexkit.DexKitBridge
 import java.io.File
+import java.lang.reflect.Executable
+import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * 网易云音乐模块主入口，根据进程名选择性启用歌词提供者钩子。
- */
-object CloudMusic : YukiBaseHooker() {
-    const val TAG = "CloudMusicProvider"
-    private val providerManager by lazy { LyricProviderManager() }
+/** Installs and owns the modern libxposed hook chain for one supported Cloud Music process. */
+internal class CloudMusic(
+    private val module: XposedModule,
+    private val logger: ModuleLogger,
+    private val packageName: String,
+    private val processName: String,
+    private val readyClassLoader: ClassLoader
+) : DownloadCallback {
+    private val stateLock = Any()
+    private val initializationStarted = AtomicBoolean(false)
+    private val lyricCacheStore = LyricCacheStore(json)
 
-    init {
-        System.loadLibrary("dexkit")
+    private var application: Application? = null
+    private var lyricProvider: LyriconProvider? = null
+    private var preferencesMonitor: PreferencesMonitor? = null
+
+    private var latestMetadata: Metadata? = null
+    private var latestPlaybackState: PlaybackState? = null
+    private var hasPlaybackState = false
+    private var currentMusicId: Long? = null
+    private var lastSetSong: Song? = null
+    private var translationType = DISABLED_TRANSLATION_TYPE
+
+    fun installHooks() {
+        logger.info(
+            "Installing hooks: package=$packageName, process=$processName, " +
+                "classLoader=$readyClassLoader"
+        )
+        hookApplicationLifecycle()
+        hookMediaSession()
     }
 
-    override fun onHook() {
-        when (processName) {
-            packageName,
-            "$packageName:play" -> {
-                YLog.info(tag = TAG, msg = "Hooking 4440 $processName")
-                providerManager.onHook()
+    private fun hookApplicationLifecycle() {
+        val method = Instrumentation::class.java.getDeclaredMethod(
+            "callApplicationOnCreate",
+            Application::class.java
+        )
+        installProtectiveAfterHook(method, "Instrumentation.callApplicationOnCreate") { chain ->
+            val hostApplication = chain.args.getOrNull(0) as? Application
+            if (hostApplication == null) {
+                logger.warn("callApplicationOnCreate did not contain an Application")
+            } else {
+                onApplicationCreated(hostApplication)
             }
+        }
+    }
+
+    private fun hookMediaSession() {
+        val metadataMethod = MediaSession::class.java.getDeclaredMethod(
+            "setMetadata",
+            MediaMetadata::class.java
+        )
+        installProtectiveAfterHook(metadataMethod, "MediaSession.setMetadata") { chain ->
+            val metadata = chain.args.getOrNull(0) as? MediaMetadata
+            if (metadata != null) onMetadataChanged(metadata)
+        }
+
+        val playbackMethod = MediaSession::class.java.getDeclaredMethod(
+            "setPlaybackState",
+            PlaybackState::class.java
+        )
+        installProtectiveAfterHook(playbackMethod, "MediaSession.setPlaybackState") { chain ->
+            onPlaybackStateChanged(chain.args.getOrNull(0) as? PlaybackState)
         }
     }
 
     /**
-     * 歌词提供者核心管理器，负责设置钩子、管理提供者生命周期、处理歌词下载与缓存。
+     * Runs host-side work only after the original method and always returns its original result.
+     * PROTECTIVE mode keeps module failures from terminating the player process.
      */
-    private class LyricProviderManager : DownloadCallback {
-        private var lyricProvider: LyriconProvider? = null
-        private var lastSetSong: Song? = null
-        private var currentMusicId: Long = -1000
-
-        private var dexKitBridge: DexKitBridge? = null
-        private var preferencesMonitor: PreferencesMonitor? = null
-
-        private var translationType: Int = -100
-
-        private var isAppCreated: Boolean = false
-        // ---------------------------------- 入口与初始化 ----------------------------------
-
-        fun onHook() {
-
-            dexKitBridge = DexKitBridge.create(appInfo.sourceDir)
-            preferencesMonitor = PreferencesMonitor(dexKitBridge!!, object : PreferenceCallback {
-                override fun onTranslationOptionChanged(type: Int) {
-                    if (translationType == type) return; translationType = type
-                    YLog.debug("type=$type")
-                    lyricProvider?.player?.setDisplayTranslation(type == 0)
-                    lyricProvider?.player?.setDisplayRoma(type == 1)
-                }
-            })
-
-            onAppLifecycle {
-                onCreate {
-                    if (isAppCreated) return@onCreate
-                    isAppCreated = true
-                    setupProvider()
-                }
-            }
-
-            rehookAfterTinkerLoad(appClassLoader!!)
-            "com.tencent.tinker.loader.TinkerLoader".toClass(appClassLoader)
-                .resolve()
-                .method { name = "tryLoad" }
-                .forEach {
-                    it.hook {
-                        after {
-                            val app = args[0] as Application
-                            rehookAfterTinkerLoad(app.classLoader)
-                        }
+    private fun installProtectiveAfterHook(
+        executable: Executable,
+        description: String,
+        callback: (XposedInterface.Chain) -> Unit
+    ) {
+        try {
+            module.hook(executable)
+                .setExceptionMode(XposedInterface.ExceptionMode.PROTECTIVE)
+                .intercept { chain ->
+                    val result = chain.proceed()
+                    try {
+                        callback(chain)
+                    } catch (throwable: Throwable) {
+                        logger.error("After-hook failed: $description", throwable)
                     }
+                    result
                 }
+            logger.debug("Installed protective hook: $description")
+        } catch (throwable: Throwable) {
+            logger.error("Unable to install hook: $description", throwable)
         }
+    }
 
-        /**
-         * 在 Tinker 热更新后重新挂钩必要的类（如偏好设置监听）。
-         */
-        private fun rehookAfterTinkerLoad(classLoader: ClassLoader) {
-            preferencesMonitor?.update(classLoader)
-            hookMediaSession(classLoader)
-        }
-
-        /**
-         * 初始化并注册 LyriconProvider。
-         */
-        private fun setupProvider() {
-            if (lyricProvider != null) return
-
-            val application = appContext ?: return
-            lyricProvider = LyriconFactory.createProvider(
-                context = application,
-                providerPackageName = PROVIDER_PACKAGE_NAME,
-                playerPackageName = application.packageName,
-                logo = ProviderLogo.fromSvg(ICON)
-            ).apply {
-                val type = preferencesMonitor?.getTranslationType() ?: -1
-                translationType = type
-                player.setDisplayTranslation(type == 0)
-                player.setDisplayRoma(type == 1)
-
-                register()
-            }
-
-            YLog.info(tag = TAG, msg = "Provider registered2")
-        }
-
-        // ---------------------------------- MediaSession 钩子 ----------------------------------
-
-        private var a: YukiMemberHookCreator.MemberHookCreator.Result? = null
-        private var b: YukiMemberHookCreator.MemberHookCreator.Result? = null
-
-        private fun hookMediaSession(classLoader: ClassLoader) {
-            a?.remove()
-            b?.remove()
-
-            "android.media.session.MediaSession".toClass(classLoader)
-                .resolve()
-                .apply {
-
-                    a = firstMethod {
-                        name = "setMetadata"
-                        parameters(MediaMetadata::class.java)
-                    }.hook {
-                        after {
-                            val metadata = args[0] as? MediaMetadata ?: return@after
-                            val data = MediaMetadataCache.save(metadata) ?: return@after
-                            if (currentMusicId == data.id) return@after
-
-                            currentMusicId = data.id
-                            onSongChanged(data)
-                        }
-                    }
-
-                    b = firstMethod {
-                        name = "setPlaybackState"
-                        parameters(PlaybackState::class.java)
-                    }.hook {
-                        after {
-                            val state = args[0] as? PlaybackState
-                            lyricProvider?.player?.setPlaybackState(state)
-                        }
-                    }
-                }
-        }
-
-        // ---------------------------------- 下载回调实现 ----------------------------------
-
-        override fun onDownloadFinished(id: Long, response: LyricResponse) {
-            YLog.debug(tag = TAG, msg = "Download finished: $id")
-            writeToLocalLyricCache(id, response)
-        }
-
-        override fun onDownloadFailed(id: Long, e: Exception) {
-            YLog.error(tag = TAG, msg = "Download failed: $id, e=$e")
-        }
-
-        // ---------------------------------- 本地缓存读写 ----------------------------------
-
-        private fun getDownloadLyricFile(id: Long): File =
-            File(Constants.getDownloadLyricDirectory(appContext!!), id.toString())
-
-        @OptIn(ExperimentalSerializationApi::class)
-        private fun writeToLocalLyricCache(id: Long, response: LyricResponse) {
-            val outputFile = getDownloadLyricFile(id)
-            val cacheEntry = LocalLyricCache(
-                musicId = id,
-                lrc = response.lrc?.lyric,
-                lrcTranslateLyric = response.tlyric?.lyric,
-                yrc = response.yrc?.lyric,
-                yrcTranslateLyric = response.ytlrc?.lyric,
-                pureMusic = response.pureMusic,
-                roma = response.romalrc?.lyric
+    private fun onApplicationCreated(hostApplication: Application) {
+        if (hostApplication.packageName != packageName) {
+            logger.warn(
+                "Ignoring unexpected Application ${hostApplication.packageName} in $processName"
             )
+            return
+        }
+        if (!initializationStarted.compareAndSet(false, true)) {
+            logger.debug("Application initialization already completed in $processName")
+            return
+        }
 
-            outputFile.outputStream().use { outputStream ->
-                json.encodeToStream(cacheEntry, outputStream)
+        synchronized(stateLock) {
+            application = hostApplication
+        }
+        logger.info(
+            "Application ready: package=$packageName, process=$processName, " +
+                "classLoader=${hostApplication.classLoader}"
+        )
+
+        try {
+            setupProvider(hostApplication)
+        } catch (throwable: Throwable) {
+            logger.error("Provider initialization failed in $processName", throwable)
+            return
+        }
+
+        startPreferencesMonitorInitialization(hostApplication)
+    }
+
+    private fun startPreferencesMonitorInitialization(hostApplication: Application) {
+        try {
+            Thread(
+                {
+                    val monitor = createPreferencesMonitor(hostApplication)
+                    val previousMonitor = synchronized(stateLock) {
+                        val previous = preferencesMonitor
+                        preferencesMonitor = monitor
+                        previous
+                    }
+                    if (previousMonitor !== monitor) {
+                        previousMonitor?.close()
+                    }
+                },
+                "Lyricon-DexKit-$processName"
+            ).apply {
+                isDaemon = true
+                start()
             }
-
-            loadLyricFromFile(cacheSource = "network", id = id, cacheFile = outputFile)
+        } catch (throwable: Throwable) {
+            logger.error("Unable to start preference capability initialization", throwable)
         }
+    }
 
-        /**
-         * 从本地缓存文件加载并设置歌词。
-         */
-        private fun loadLyricFromFile(cacheSource: String, id: Long, cacheFile: File) {
-            YLog.debug(tag = TAG, msg = "Load lyric file: $cacheSource, file=$cacheFile")
-
-            val metadata = MediaMetadataCache.get(id) ?: return
-            loadAndSetSong(metadata, cacheFile)
-        }
-
-        // ---------------------------------- 歌曲变更处理 ----------------------------------
-
-        private fun onSongChanged(metadata: Metadata) {
-            val newMusicId = metadata.id
-
-            val localCacheFile = getDownloadLyricFile(newMusicId)
-            if (localCacheFile.exists()) {
-                loadLyricFromFile(
-                    cacheSource = "localCache",
-                    id = currentMusicId,
-                    cacheFile = localCacheFile
+    private fun createPreferencesMonitor(hostApplication: Application): PreferencesMonitor? {
+        return try {
+            ensureDexKitLoaded()
+            val monitor = DexKitBridge.create(hostApplication.applicationInfo.sourceDir).use { bridge ->
+                PreferencesMonitor(
+                    kitBridge = bridge,
+                    callback = PreferenceCallback { type ->
+                        dispatchTranslationOptionChange(hostApplication, type)
+                    },
+                    logger = logger,
+                    hostPackageName = packageName
                 )
-            } else {
-                Downloader.download(newMusicId, this)
             }
+            // MethodData survives the query bridge; resolve it with the actual Application loader.
+            monitor.update(hostApplication.classLoader)
+            monitor
+        } catch (throwable: Throwable) {
+            logger.error(
+                "Preference capability disabled because DexKit initialization failed",
+                throwable
+            )
+            dispatchTranslationOptionChange(hostApplication, DISABLED_TRANSLATION_TYPE)
+            null
+        }
+    }
+
+    private fun dispatchTranslationOptionChange(
+        hostApplication: Application,
+        type: Int
+    ) {
+        try {
+            hostApplication.mainExecutor.execute {
+                onTranslationOptionChanged(type)
+            }
+        } catch (throwable: Throwable) {
+            logger.error("Unable to dispatch the translation preference", throwable)
+        }
+    }
+
+    private fun setupProvider(hostApplication: Application) {
+        val initialTranslationType = synchronized(stateLock) { translationType }
+        val provider = LyriconFactory.createProvider(
+            context = hostApplication,
+            providerPackageName = PROVIDER_PACKAGE_NAME,
+            playerPackageName = packageName,
+            logo = ProviderLogo.fromSvg(ICON)
+        ).apply {
+            player.setDisplayTranslation(initialTranslationType == TRANSLATION_TYPE)
+            player.setDisplayRoma(initialTranslationType == ROMANIZATION_TYPE)
+            register()
         }
 
-        /**
-         * 同步加载缓存文件并设置歌曲，若无有效歌词则回退到基本歌曲信息。
-         */
-        private fun loadAndSetSong(metadata: Metadata, cacheFile: File?) {
-            val id = metadata.id
+        val replay = synchronized(stateLock) {
+            lyricProvider = provider
+            val metadataToReplay = latestMetadata?.takeIf { currentMusicId != it.id }
+            if (metadataToReplay != null) {
+                currentMusicId = metadataToReplay.id
+                lastSetSong = null
+            }
+            ReplayState(
+                metadata = metadataToReplay,
+                playbackState = latestPlaybackState,
+                hasPlaybackState = hasPlaybackState
+            )
+        }
 
-            var songToSet = Song(
-                id = id.toString(),
+        logger.info("Provider registered in $processName")
+        replay.metadata?.let(::onSongChanged)
+        if (replay.hasPlaybackState) {
+            provider.player.setPlaybackState(replay.playbackState)
+        }
+    }
+
+    private fun onMetadataChanged(mediaMetadata: MediaMetadata) {
+        val metadata = MediaMetadataCache.save(mediaMetadata) ?: run {
+            logger.debug("Ignoring metadata without a supported media id")
+            return
+        }
+
+        val shouldDispatch = synchronized(stateLock) {
+            latestMetadata = metadata
+            if (lyricProvider == null || currentMusicId == metadata.id) {
+                false
+            } else {
+                currentMusicId = metadata.id
+                lastSetSong = null
+                true
+            }
+        }
+        if (shouldDispatch) onSongChanged(metadata)
+    }
+
+    private fun onPlaybackStateChanged(state: PlaybackState?) {
+        val provider = synchronized(stateLock) {
+            latestPlaybackState = state
+            hasPlaybackState = true
+            lyricProvider
+        }
+        provider?.player?.setPlaybackState(state)
+    }
+
+    private fun onTranslationOptionChanged(type: Int) {
+        val normalizedType = type.takeIf {
+            it == TRANSLATION_TYPE || it == ROMANIZATION_TYPE
+        } ?: DISABLED_TRANSLATION_TYPE
+        val provider = synchronized(stateLock) {
+            if (translationType == normalizedType) return
+            translationType = normalizedType
+            lyricProvider
+        }
+
+        logger.debug("Translation option changed: type=$normalizedType")
+        provider?.player?.setDisplayTranslation(normalizedType == TRANSLATION_TYPE)
+        provider?.player?.setDisplayRoma(normalizedType == ROMANIZATION_TYPE)
+    }
+
+    override fun onDownloadFinished(id: Long, response: LyricResponse) {
+        logger.debug("Download finished: id=$id")
+        val cache = response.toValidCacheOrNull(id)
+        if (cache == null) {
+            logger.warn("Ignoring invalid lyric response: id=$id, code=${response.code}")
+            return
+        }
+        try {
+            writeToLocalLyricCache(id, cache)
+        } catch (throwable: Throwable) {
+            logger.error("Writing downloaded lyrics failed: id=$id", throwable)
+        }
+    }
+
+    override fun onDownloadFailed(id: Long, e: Exception) {
+        logger.error("Download failed: id=$id", e)
+    }
+
+    private fun getDownloadLyricFile(id: Long): File? {
+        val hostApplication = synchronized(stateLock) { application } ?: return null
+        val directory = Constants.getDownloadLyricDirectory(hostApplication)
+            ?: File(hostApplication.filesDir, "LyriconDownload")
+        if (!directory.exists() && !directory.mkdirs()) {
+            logger.warn("Unable to create lyric cache directory: $directory")
+            return null
+        }
+        return File(directory, id.toString())
+    }
+
+    private fun writeToLocalLyricCache(id: Long, cache: LocalLyricCache) {
+        val outputFile = getDownloadLyricFile(id) ?: return
+        if (!lyricCacheStore.write(outputFile, cache)) {
+            logger.warn("Unable to atomically replace lyric cache: id=$id")
+            return
+        }
+
+        val currentId = synchronized(stateLock) { currentMusicId }
+        if (CurrentTrackPolicy.shouldPublish(id, currentId)) {
+            loadLyricFromFile(cacheSource = "network", id = id, cacheFile = outputFile)
+        } else {
+            logger.debug("Cached stale download without replaying it: id=$id")
+        }
+    }
+
+    private fun loadLyricFromFile(cacheSource: String, id: Long, cacheFile: File): Boolean {
+        if (!isCurrentMusic(id)) return false
+        logger.debug("Loading lyric file: source=$cacheSource, file=$cacheFile")
+
+        val metadata = MediaMetadataCache.get(id) ?: synchronized(stateLock) {
+            latestMetadata?.takeIf { it.id == id }
+        } ?: return false
+        val cache = lyricCacheStore.read(cacheFile, id) ?: return false
+        val parsedSong = try {
+            cache.toSong(metadata)
+        } catch (exception: Exception) {
+            cacheFile.delete()
+            logger.error("Synchronous lyric parsing failed: id=$id", exception)
+            return false
+        }
+        if (!cache.pureMusic && parsedSong.lyrics.isNullOrEmpty()) {
+            cacheFile.delete()
+            logger.warn("Deleting lyric cache with no parseable source lyrics: id=$id")
+            return false
+        }
+        setSong(id, parsedSong)
+        return true
+    }
+
+    private fun onSongChanged(metadata: Metadata) {
+        if (!isCurrentMusic(metadata.id)) return
+        val localCacheFile = getDownloadLyricFile(metadata.id)
+        if (localCacheFile?.exists() == true && loadLyricFromFile(
+                cacheSource = "localCache",
+                id = metadata.id,
+                cacheFile = localCacheFile
+            )
+        ) {
+            return
+        }
+
+        // Always publish basic metadata before the asynchronous cache recovery/download.
+        setSong(
+            metadata.id,
+            Song(
+                id = metadata.id.toString(),
                 name = metadata.title,
                 artist = metadata.artist,
-                duration = metadata.duration,
+                duration = resolveSongDuration(metadata.duration, null)
             )
+        )
+        Downloader.download(metadata.id, this)
+    }
 
-            if (cacheFile?.exists() == true) {
-                try {
-                    val cachedData = cacheFile.readText()
-                    val cache = json.decodeFromString<LocalLyricCache>(cachedData)
-                    val parsedSong = cache.toSong()
-
-                    if (!parsedSong.lyrics.isNullOrEmpty() && !cache.pureMusic) {
-                        songToSet = parsedSong
-                    }
-                } catch (e: Exception) {
-                    YLog.error("Sync parse failed for $id: ${e.message}", e = e)
-                }
-            }
-
-            setSong(songToSet)
-        }
-
-        private fun setSong(raw: Song) {
-            Log.i(TAG, raw.toString())
-
-            val song = raw.deepCopy()
-            if (song.lyrics?.size != 0) {
-                val id = song.id?.toLongOrNull()
-                if (id != null) {
-                    val m = MediaMetadataCache.get(id)
-                    Log.i(TAG, m.toString())
-
-                    val lyric = m?.lyric
-                    if (!lyric.isNullOrBlank()) {
-                        val l = EnhanceLrcParser.parse(lyric, m.duration)
-                        if (l.lines.isNotEmpty()) {
-                            song.lyrics = l.lines
-                        }
-                    }
-                }
-            }
-
-            if (lastSetSong == song) return
+    private fun setSong(id: Long, song: Song) {
+        synchronized(stateLock) {
+            if (currentMusicId != id || lastSetSong == song) return
             lastSetSong = song
+            // Keep the current-id check and provider update in one critical section so a
+            // concurrently arriving track cannot be overwritten by this result.
             lyricProvider?.player?.setSong(song)
+        }
+    }
+
+    private fun isCurrentMusic(id: Long): Boolean =
+        synchronized(stateLock) { currentMusicId == id }
+
+    private data class ReplayState(
+        val metadata: Metadata?,
+        val playbackState: PlaybackState?,
+        val hasPlaybackState: Boolean
+    )
+
+    private companion object {
+        const val DISABLED_TRANSLATION_TYPE = -1
+        const val TRANSLATION_TYPE = 0
+        const val ROMANIZATION_TYPE = 1
+
+        val dexKitLoadLock = Any()
+
+        @Volatile
+        var dexKitLoaded = false
+
+        fun ensureDexKitLoaded() {
+            if (dexKitLoaded) return
+            synchronized(dexKitLoadLock) {
+                if (dexKitLoaded) return
+                System.loadLibrary("dexkit")
+                dexKitLoaded = true
+            }
         }
     }
 }

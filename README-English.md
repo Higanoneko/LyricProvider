@@ -20,7 +20,7 @@
 | Platform                             | Identifier          | Description                                        |
 |:-------------------------------------|:--------------------|:---------------------------------------------------|
 | 🍎 **Apple Music**                   | `apple-music`       | Supports dynamic lyrics, translated lyrics         |
-| ☁️ **Netease Music**                 | `163-music`         | Supports dynamic lyrics, translated lyrics         |
+| ☁️ **Netease Music**                 | `163-music`         | Supports dynamic/translated lyrics; Modern API 101+ |
 | 🐧 **QQ Music**                      | `qq-music`          | Supports dynamic lyrics, translated lyrics         |
 | 🐧 **QQ Music HD**                   | `qq-music-hd`       | Supports dynamic lyrics, translated lyrics         |
 | 🔵 **Bodian Music**                  | `bodian-music`      | Word-by-word lyrics, works offline                 |
@@ -32,6 +32,8 @@
 | 🧂 **Salt Music**                    | `salt-player-music` | Adapted based on Meizu standard lyric interface    |
 | 🎵 **Qishui Music**                  | `qishui-music`      | Supports dynamic lyrics, translated lyrics         |
 | 🎵 **MusicFree**                     | `music-free`        | Support translation                                |
+
+> **Netease module compatibility:** Starting with 1.1.0-beta1, `163-music` ships as a single Modern API APK and requires LSPosed Modern API 101 or newer. It cannot be loaded by LSPosed 1.9.2, which only supports the Legacy API. All other provider modules remain on the Legacy API and are unaffected.
 
 ### Universal / Special Modules
 
